@@ -191,7 +191,7 @@ static const uint8_t PROGMEM _NeoPixelGammaTable[256] = {
             Adafruit NeoPixels and compatible devices.
 */
 class Adafruit_NeoPixel {
-
+ friend class Adafruit_HybridNeoPixel;
  public:
 
   // Constructor: number of LEDs, pin number, LED type

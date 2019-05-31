@@ -60,7 +60,7 @@ void Adafruit_HybridNeoPixel::alloc()
 #endif
 	for (int i=0; i < _strips.size(); i++) {
 		Adafruit_NeoPixel *np = _strips[i];
-		np->pixels = pixels + (uint16_t)np->pixels;
+		np->pixels = pixels + (uint32_t)np->pixels;
 #ifdef VERBOSE
 		Serial.print("0x");
 		Serial.println((long)np->pixels, HEX);

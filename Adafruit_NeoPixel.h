@@ -43,6 +43,10 @@
  #include <pins_arduino.h>
 #endif
 
+#include <Vector.h>
+
+#define MAX_STRIPS 4
+
 // The order of primary colors in the NeoPixel data stream can vary among
 // device types, manufacturers and even different revisions of the same
 // item.  The third parameter to the Adafruit_NeoPixel constructor encodes
@@ -191,7 +195,6 @@ static const uint8_t PROGMEM _NeoPixelGammaTable[256] = {
             Adafruit NeoPixels and compatible devices.
 */
 class Adafruit_NeoPixel {
- friend class Adafruit_HybridNeoPixel;
  public:
 
   // Constructor: number of LEDs, pin number, LED type
@@ -199,6 +202,9 @@ class Adafruit_NeoPixel {
     neoPixelType type=NEO_GRB + NEO_KHZ800);
   Adafruit_NeoPixel(void);
   ~Adafruit_NeoPixel();
+
+  void              add(uint16_t n, neoPixelType type=NEO_GRB + NEO_KHZ800);
+  void              alloc(void);
 
   void              begin(void);
   void              show(void);
@@ -342,6 +348,9 @@ class Adafruit_NeoPixel {
   uint8_t           bOffset;    ///< Index of blue byte
   uint8_t           wOffset;    ///< Index of white (==rOffset if no white)
   uint32_t          endTime;    ///< Latch timing reference
+  boolean           _hybrid;
+  Adafruit_NeoPixel * np_storage_array[MAX_STRIPS];
+  Vector<Adafruit_NeoPixel *> _strips;
 #ifdef __AVR__
   volatile uint8_t *port;       ///< Output PORT register
   uint8_t           pinMask;    ///< Output PORT bitmask

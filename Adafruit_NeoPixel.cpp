@@ -87,7 +87,8 @@ Adafruit_NeoPixel::Adafruit_NeoPixel() :
   is800KHz(true),
 #endif
   begun(false), numLEDs(0), numBytes(0), pin(-1), brightness(0), pixels(NULL),
-  rOffset(1), gOffset(0), bOffset(2), wOffset(1), endTime(0) {
+  rOffset(1), gOffset(0), bOffset(2), wOffset(1), endTime(0), _hybrid(false) {
+  _strips.setStorage(np_storage_array, MAX_STRIPS, 0);
 }
 
 /*!
@@ -96,6 +97,68 @@ Adafruit_NeoPixel::Adafruit_NeoPixel() :
 Adafruit_NeoPixel::~Adafruit_NeoPixel() {
   free(pixels);
   if(pin >= 0) pinMode(pin, INPUT);
+	if(_hybrid) {
+		for (int i=0; i < _strips.size(); i++)
+			delete _strips[i];
+		_strips.clear();
+	}
+}
+
+void Adafruit_NeoPixel::add(uint16_t n, neoPixelType type)
+{
+	_hybrid |= true;
+	Adafruit_NeoPixel *np = new Adafruit_NeoPixel();
+	np->setPin(pin);
+	np->updateType(type);
+	np->numLEDs = n;
+	_strips.push_back(np);
+#ifdef VERBOSE
+	Serial.println("Added strip");
+#endif
+}
+
+void Adafruit_NeoPixel::alloc()
+{
+	if (!_hybrid)
+		return;
+
+	free(pixels); // Free existing data (if any)
+	numBytes = 0;
+#ifdef VERBOSE
+	Serial.println("Totaling LEDs");
+#endif
+	for (int i=0; i < _strips.size(); i++) {
+		Adafruit_NeoPixel *np = _strips[i];
+		np->pixels = (uint8_t *)numBytes;
+		numBytes += np->numLEDs * ((np->wOffset ==  np->rOffset) ? 3 : 4);
+		numLEDs += np->numLEDs;
+	}
+	// Allocate new data -- note: ALL PIXELS ARE CLEARED
+#ifdef VERBOSE
+	Serial.print("Allocating ");
+	Serial.print(numBytes, DEC);
+	Serial.println(" bytes of memory");
+#endif
+	if((pixels = (uint8_t *)malloc(numBytes))) {
+		memset(pixels, 0, numBytes);
+	} else {
+		numLEDs = numBytes = 0;
+	}
+#ifdef VERBOSE
+	Serial.print("Calculating ");
+	Serial.print(_strips.size(), DEC);
+	Serial.println(" pixel buffer pointers");
+	Serial.print("0x");
+	Serial.println((long)pixels, HEX);
+#endif
+	for (int i=0; i < _strips.size(); i++) {
+		Adafruit_NeoPixel *np = _strips[i];
+		np->pixels = pixels + (uint32_t)np->pixels;
+#ifdef VERBOSE
+		Serial.print("0x");
+		Serial.println((long)np->pixels, HEX);
+#endif
+	}
 }
 
 /*!
@@ -2080,6 +2143,16 @@ void Adafruit_NeoPixel::setPin(uint8_t p) {
 void Adafruit_NeoPixel::setPixelColor(
  uint16_t n, uint8_t r, uint8_t g, uint8_t b) {
 
+  if(_hybrid) {
+	  int nl = 0;
+	  for (int i=0; i < _strips.size(); i++) {
+		  if (nl <= n && n < nl + _strips[i]->numLEDs) {
+			  _strips[i]->setPixelColor(n-nl, r, g, b);
+			  return;
+		  }
+		  nl += _strips[i]->numLEDs;
+	  }
+  } else {
   if(n < numLEDs) {
     if(brightness) { // See notes in setBrightness()
       r = (r * brightness) >> 8;
@@ -2097,6 +2170,7 @@ void Adafruit_NeoPixel::setPixelColor(
     p[gOffset] = g;
     p[bOffset] = b;
   }
+  }
 }
 
 /*!
@@ -2112,6 +2186,16 @@ void Adafruit_NeoPixel::setPixelColor(
 void Adafruit_NeoPixel::setPixelColor(
  uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t w) {
 
+	if(_hybrid) {
+		int nl = 0;
+		for (int i=0; i < _strips.size(); i++) {
+			if (nl <= n && n < nl + _strips[i]->numLEDs) {
+				_strips[i]->setPixelColor(n-nl, r, g, b, w);
+				return;
+			}
+			nl += _strips[i]->numLEDs;
+		}
+	} else {
   if(n < numLEDs) {
     if(brightness) { // See notes in setBrightness()
       r = (r * brightness) >> 8;
@@ -2130,6 +2214,7 @@ void Adafruit_NeoPixel::setPixelColor(
     p[gOffset] = g;
     p[bOffset] = b;
   }
+  }
 }
 
 /*!
@@ -2140,6 +2225,16 @@ void Adafruit_NeoPixel::setPixelColor(
               and least significant byte is blue.
 */
 void Adafruit_NeoPixel::setPixelColor(uint16_t n, uint32_t c) {
+	if(_hybrid) {
+		int nl = 0;
+		for (int i=0; i < _strips.size(); i++) {
+			if (nl <= n && n < nl + _strips[i]->numLEDs) {
+				_strips[i]->setPixelColor(n-nl, c);
+				return;
+			}
+			nl += _strips[i]->numLEDs;
+		}
+	} else {
   if(n < numLEDs) {
     uint8_t *p,
       r = (uint8_t)(c >> 16),
@@ -2160,6 +2255,7 @@ void Adafruit_NeoPixel::setPixelColor(uint16_t n, uint32_t c) {
     p[rOffset] = r;
     p[gOffset] = g;
     p[bOffset] = b;
+  }
   }
 }
 
@@ -2361,6 +2457,10 @@ uint32_t Adafruit_NeoPixel::getPixelColor(uint16_t n) const {
            frame of an animation, not relying on read-modify-write.
 */
 void Adafruit_NeoPixel::setBrightness(uint8_t b) {
+	if(_hybrid) {
+		for (int i=0; i < _strips.size(); i++)
+			_strips[i]->setBrightness(b);
+	}
   // Stored brightness value is different than what's passed.
   // This simplifies the actual scaling math later, allowing a fast
   // 8x8-bit multiply and taking the MSB. 'brightness' is a uint8_t,
